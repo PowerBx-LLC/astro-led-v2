@@ -1,0 +1,20 @@
+{
+  "name": "cordova-plugin-astro-led",
+  "version": "2.0.0",
+  "description": "Cordova plugin for controlling ASTRO LED hardware via the AstroLed library",
+  "main": "www/LedController.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "cordova",
+    "led",
+    "astro",
+    "powerbx"
+  ],
+  "author": "PowerBx",
+  "license": "MIT",
+  "dependencies": {
+    "com.powerbx.astro:led": "2.0.0"
+  }
+}

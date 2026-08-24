@@ -1,0 +1,23 @@
+<?xml version='1.0' encoding='utf-8'?>
+<plugin id="cordova-plugin-astro-led" version="2.0.0" xmlns="http://apache.org/cordova/ns/plugins/1.0">
+    <name>ASTRO LED Controller</name>
+    <description>Cordova plugin for controlling ASTRO LED hardware via the AstroLed library</description>
+    <license>MIT</license>
+    <author>PowerBx</author>
+
+    <dependency id="com.powerbx.astro:led" version="2.0.0" />
+
+    <js-module src="www/LedController.js" name="LedController">
+        <clobbers target="LedController" />
+    </js-module>
+
+    <platform name="android">
+        <config-file target="config.xml" parent="/*">
+            <feature name="LedController">
+                <param name="android-package" value="com.powerbx.cordova.LedController" />
+            </feature>
+        </config-file>
+
+        <source-file src="src/android/LedController.java" target-dir="src/com/powerbx/cordova" />
+    </platform>
+</plugin>
