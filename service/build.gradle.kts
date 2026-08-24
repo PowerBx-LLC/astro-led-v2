@@ -1,5 +1,5 @@
 plugins {
-    id("com.android.library")
+    id("com.android.application")
     kotlin("android")
 }
 
@@ -8,8 +8,11 @@ android {
     compileSdk = 35
 
     defaultConfig {
+        applicationId = "com.powerbx.astro.ledservice"
         minSdk = 27
         targetSdk = 35
+        versionCode = 1
+        versionName = "2.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -40,9 +43,6 @@ dependencies {
     
     // NanoHTTPD for HTTP server
     implementation("org.nanohttpd:nanohttpd:2.3.1")
-    
-    // JSON parsing
-    implementation("org.json:json:20231013")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

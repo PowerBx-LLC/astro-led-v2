@@ -1,63 +1,55 @@
 package com.powerbx.astro.ledservice
 
 /**
- * Device profile for RK3288-based ASTRO LED controller.
- * Maps command codes and color codes to sysfs operations.
+ * Device profile for RK3288 ASTRO LED controller.
+ * Defines sysfs path, command codes, and color codes per Section 1 spec.
  */
 object DeviceProfile {
     const val DEVICE_NAME = "RK3288_ASTRO"
-    const val SYSFS_PATH = "/sys/class/leds/rk3288-astro/brightness"
+    const val SYSFS_PATH = "/sys/devices/platform/led_con_h/zigbee_reset"
+    const val REQUIRES_ROOT = true
 
-    // Command codes (0x00-0x0F)
-    enum class CommandCode(val value: Int) {
-        CMD_POWER_OFF(0x00),
-        CMD_POWER_ON(0x01),
-        CMD_EFFECT_STATIC(0x02),
-        CMD_EFFECT_PULSE(0x03),
-        CMD_EFFECT_STROBE(0x04),
-        CMD_EFFECT_FADE(0x05),
-        CMD_EFFECT_RAINBOW(0x06),
-        CMD_BRIGHTNESS_10(0x07),
-        CMD_BRIGHTNESS_25(0x08),
-        CMD_BRIGHTNESS_50(0x09),
-        CMD_BRIGHTNESS_75(0x0A),
-        CMD_BRIGHTNESS_100(0x0B),
-        CMD_SPEED_SLOW(0x0C),
-        CMD_SPEED_NORMAL(0x0D),
-        CMD_SPEED_FAST(0x0E),
-        CMD_RESERVED(0x0F);
-
-        companion object {
-            fun fromValue(value: Int): CommandCode? =
-                values().find { it.value == value }
-        }
+    /**
+     * Command codes (sysfs write format: "echo w 0x{hex} > {SYSFS_PATH}")
+     */
+    object Commands {
+        const val BRIGHTNESS_DOWN = 0x00
+        const val BRIGHTNESS_UP = 0x01
+        const val OFF = 0x02
+        const val ON = 0x03
+        const val FLASH = 0x0b
+        const val STROBE = 0x0f
+        const val FADE = 0x13
+        const val SMOOTH = 0x17
     }
 
-    // Color codes (0x00-0x0F)
-    enum class ColorCode(val value: Int, val name: String, val rgbHex: String) {
-        COLOR_RED(0x00, "RED", "FF0000"),
-        COLOR_GREEN(0x01, "GREEN", "00FF00"),
-        COLOR_BLUE(0x02, "BLUE", "0000FF"),
-        COLOR_YELLOW(0x03, "YELLOW", "FFFF00"),
-        COLOR_CYAN(0x04, "CYAN", "00FFFF"),
-        COLOR_MAGENTA(0x05, "MAGENTA", "FF00FF"),
-        COLOR_WHITE(0x06, "WHITE", "FFFFFF"),
-        COLOR_BLACK(0x07, "BLACK", "000000"),
-        COLOR_ORANGE(0x08, "ORANGE", "FF8000"),
-        COLOR_PURPLE(0x09, "PURPLE", "8000FF"),
-        COLOR_PINK(0x0A, "PINK", "FF00FF"),
-        COLOR_LIME(0x0B, "LIME", "00FF80"),
-        COLOR_TEAL(0x0C, "TEAL", "00FFFF"),
-        COLOR_NAVY(0x0D, "NAVY", "000080"),
-        COLOR_SILVER(0x0E, "SILVER", "C0C0C0"),
-        COLOR_GOLD(0x0F, "GOLD", "FFD700");
+    /**
+     * Color codes (sysfs write format: "echo w 0x{hex} > {SYSFS_PATH}")
+     */
+    object Colors {
+        const val RED = 0x04
+        const val GREEN = 0x05
+        const val BLUE = 0x06
+        const val WHITE = 0x07
+        const val RED_ORANGE = 0x08
+        const val MINT = 0x09
+        const val PURPLE = 0x0a
+        const val ORANGE = 0x0c
+        const val TURQUOISE = 0x0d
+        const val PURPLE_PINK = 0x0e
+        const val ORANGE_YELLOW = 0x10
+        const val LIGHT_BLUE = 0x11
+        const val PINK = 0x12
+        const val YELLOW = 0x14
+        const val TEAL = 0x15
+        const val MAGENTA = 0x16
+    }
 
-        companion object {
-            fun fromValue(value: Int): ColorCode? =
-                values().find { it.value == value }
-
-            fun fromName(name: String): ColorCode? =
-                values().find { it.name.equals(name, ignoreCase = true) }
-        }
+    /**
+     * RK3566_ASTRO profile (pending factory response)
+     * TODO: Add sysfs path, command codes, and color codes when available
+     */
+    object RK3566Stub {
+        const val STATUS = "PENDING_FACTORY_RESPONSE"
     }
 }
