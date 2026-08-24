@@ -5,19 +5,18 @@ import org.json.JSONObject
 
 /**
  * Immutable LED state with SharedPreferences persistence.
+ * Fields: power (ON/OFF), color, effect (none/flash/strobe/fade/smooth), lastError
  */
 data class LedState(
     val power: Boolean = false,
     val color: String = "WHITE",
-    val effect: String = "STATIC",
-    val brightness: Int = 100,
+    val effect: String = "none",
     val lastError: String? = null
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
-        put("power", power)
+        put("power", if (power) "ON" else "OFF")
         put("color", color)
         put("effect", effect)
-        put("brightness", brightness)
         if (lastError != null) {
             put("lastError", lastError)
         }
@@ -28,15 +27,13 @@ data class LedState(
         private const val KEY_POWER = "power"
         private const val KEY_COLOR = "color"
         private const val KEY_EFFECT = "effect"
-        private const val KEY_BRIGHTNESS = "brightness"
         private const val KEY_LAST_ERROR = "lastError"
 
         fun fromJson(json: JSONObject): LedState {
             return LedState(
                 power = json.optBoolean(KEY_POWER, false),
                 color = json.optString(KEY_COLOR, "WHITE"),
-                effect = json.optString(KEY_EFFECT, "STATIC"),
-                brightness = json.optInt(KEY_BRIGHTNESS, 100),
+                effect = json.optString(KEY_EFFECT, "none"),
                 lastError = json.optString(KEY_LAST_ERROR, null).ifEmpty { null }
             )
         }
@@ -46,8 +43,7 @@ data class LedState(
             return LedState(
                 power = prefs.getBoolean(KEY_POWER, false),
                 color = prefs.getString(KEY_COLOR, "WHITE") ?: "WHITE",
-                effect = prefs.getString(KEY_EFFECT, "STATIC") ?: "STATIC",
-                brightness = prefs.getInt(KEY_BRIGHTNESS, 100),
+                effect = prefs.getString(KEY_EFFECT, "none") ?: "none",
                 lastError = prefs.getString(KEY_LAST_ERROR, null)
             )
         }
@@ -63,7 +59,6 @@ data class LedState(
             putBoolean(KEY_POWER, power)
             putString(KEY_COLOR, color)
             putString(KEY_EFFECT, effect)
-            putInt(KEY_BRIGHTNESS, brightness)
             if (lastError != null) {
                 putString(KEY_LAST_ERROR, lastError)
             } else {

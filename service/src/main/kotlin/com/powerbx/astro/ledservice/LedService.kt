@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat
 
 /**
  * Foreground service managing LED state and handling broadcast commands.
+ * Writes commands to sysfs in sequential order: power, color, effect, brightness.
  */
 class LedService : Service() {
     private companion object {
@@ -107,15 +108,25 @@ class LedService : Service() {
 
     private fun broadcastStateChange() {
         val intent = Intent("com.powerbx.astro.LED_STATE").apply {
-            putExtra("state", currentState.toJson().toString())
+            putExtra("power", currentState.power)
+            putExtra("color", currentState.color)
+            putExtra("effect", currentState.effect)
+            if (currentState.lastError != null) {
+                putExtra("lastError", currentState.lastError)
+            }
         }
         sendBroadcast(intent)
     }
 
     /**
      * Broadcast receiver for LED commands.
-     * Expected extras: power (boolean), color (String), effect (String), brightness (Int)
-     * in that order.
+     * Extras (all optional strings, case-insensitive):
+     *   power: "on", "off"
+     *   color: color name (RED, GREEN, LIGHT_BLUE, etc., case-insensitive)
+     *   effect: "flash", "strobe", "fade", "smooth", "none"
+     *   brightness: "up", "down"
+     *
+     * Execution order: (1) power, (2) color, (3) effect, (4) brightness
      */
     inner class LedCommandReceiver : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -130,76 +141,143 @@ class LedService : Service() {
         }
 
         private fun handleLedCommand(intent: Intent) {
-            // Extract extras in order: power, color, effect, brightness
-            val power = intent.getBooleanExtra("power", currentState.power)
-            val color = intent.getStringExtra("color") ?: currentState.color
-            val effect = intent.getStringExtra("effect") ?: currentState.effect
-            val brightness = intent.getIntExtra("brightness", currentState.brightness)
+            val power = intent.getStringExtra("power")
+            val color = intent.getStringExtra("color")
+            val effect = intent.getStringExtra("effect")
+            val brightness = intent.getStringExtra("brightness")
 
             Log.d(
                 TAG,
                 "LED Command: power=$power, color=$color, effect=$effect, brightness=$brightness"
             )
 
-            val newState = LedState(
-                power = power,
-                color = color,
-                effect = effect,
-                brightness = brightness
+            // Build new state based on provided values
+            val newState = currentState.copy(
+                power = if (power != null) power.lowercase() == "on" else currentState.power,
+                color = color ?: currentState.color,
+                effect = effect ?: currentState.effect,
+                lastError = null
             )
 
-            // Apply command to device
-            applyLedState(newState)
+            // Apply commands to device
+            applyLedState(newState, power, color, effect, brightness)
             updateState(newState)
         }
 
         private fun handleLedQuery(intent: Intent) {
             Log.d(TAG, "LED Query received")
             val responseIntent = Intent("com.powerbx.astro.LED_STATE").apply {
-                putExtra("state", currentState.toJson().toString())
+                putExtra("power", if (currentState.power) "ON" else "OFF")
+                putExtra("color", currentState.color)
+                putExtra("effect", currentState.effect)
+                if (currentState.lastError != null) {
+                    putExtra("lastError", currentState.lastError)
+                }
             }
             sendBroadcast(responseIntent)
         }
 
-        private fun applyLedState(state: LedState) {
-            // Construct command code from state
-            var command = 0x00
-
-            // Power bit
-            if (state.power) {
-                command = command or 0x01
+        /**
+         * Apply LED state via sequential sysfs writes.
+         * Order: (1) power, (2) color, (3) effect, (4) brightness
+         * Each field writes its own hex code; skips if not provided.
+         */
+        private fun applyLedState(
+            state: LedState,
+            powerStr: String?,
+            colorStr: String?,
+            effectStr: String?,
+            brightnessStr: String?
+        ) {
+            // (1) Power: write ON (0x03) or OFF (0x02)
+            if (powerStr != null) {
+                val powerCode = if (powerStr.lowercase() == "on") {
+                    DeviceProfile.Commands.ON
+                } else {
+                    DeviceProfile.Commands.OFF
+                }
+                Log.d(TAG, "Writing power: 0x${String.format("%02X", powerCode)}")
+                SysfsWriter.writeCommand(DeviceProfile.SYSFS_PATH, powerCode)
             }
 
-            // Effect bits (offset by 1)
-            val effectCode = when (state.effect.uppercase()) {
-                "STATIC" -> 0x00
-                "PULSE" -> 0x01
-                "STROBE" -> 0x02
-                "FADE" -> 0x03
-                "RAINBOW" -> 0x04
-                else -> 0x00
+            // (2) Color: write matching color code
+            if (colorStr != null) {
+                val colorCode = parseColorName(colorStr)
+                if (colorCode != null) {
+                    Log.d(TAG, "Writing color: 0x${String.format("%02X", colorCode)}")
+                    SysfsWriter.writeCommand(DeviceProfile.SYSFS_PATH, colorCode)
+                } else {
+                    Log.w(TAG, "Unknown color: $colorStr")
+                }
             }
-            command = command or (effectCode shl 1)
 
-            // Color bits (offset by 4)
-            val colorCode = DeviceProfile.ColorCode.fromName(state.color)?.value ?: 0x06
-            command = command or (colorCode shl 4)
+            // (3) Effect: write effect code or ON for "none"
+            if (effectStr != null) {
+                val effectCode = parseEffectName(effectStr)
+                if (effectCode != null) {
+                    Log.d(TAG, "Writing effect: 0x${String.format("%02X", effectCode)}")
+                    SysfsWriter.writeCommand(DeviceProfile.SYSFS_PATH, effectCode)
+                } else {
+                    Log.w(TAG, "Unknown effect: $effectStr")
+                }
+            }
 
-            Log.d(TAG, "Applying command: 0x${String.format("%02X", command)}")
-            SysfsWriter.writeCommandAsync(
-                DeviceProfile.SYSFS_PATH,
-                command
-            ) { result ->
-                when (result) {
-                    is SysfsWriter.Result.Success -> {
-                        Log.d(TAG, "LED command applied successfully")
-                    }
-
-                    is SysfsWriter.Result.Failure -> {
-                        Log.e(TAG, "LED command failed: ${result.error.code}")
-                        updateState(currentState.copy(lastError = result.error.code))
+            // (4) Brightness: write UP (0x01) or DOWN (0x00)
+            if (brightnessStr != null) {
+                val brightnessCode = when (brightnessStr.lowercase()) {
+                    "up" -> DeviceProfile.Commands.BRIGHTNESS_UP
+                    "down" -> DeviceProfile.Commands.BRIGHTNESS_DOWN
+                    else -> {
+                        Log.w(TAG, "Unknown brightness command: $brightnessStr")
+                        null
                     }
                 }
+                if (brightnessCode != null) {
+                    Log.d(TAG, "Writing brightness: 0x${String.format("%02X", brightnessCode)}")
+                    SysfsWriter.writeCommand(DeviceProfile.SYSFS_PATH, brightnessCode)
+                }
+            }
+        }
+
+        /**
+         * Parse color name (case-insensitive, handles both LIGHT_BLUE and lightBlue).
+         * Returns hex code or null if not found.
+         */
+        private fun parseColorName(name: String): Int? {
+            val normalized = name.uppercase()
+            return when (normalized) {
+                "RED" -> DeviceProfile.Colors.RED
+                "GREEN" -> DeviceProfile.Colors.GREEN
+                "BLUE" -> DeviceProfile.Colors.BLUE
+                "WHITE" -> DeviceProfile.Colors.WHITE
+                "RED_ORANGE", "REDORANGE" -> DeviceProfile.Colors.RED_ORANGE
+                "MINT" -> DeviceProfile.Colors.MINT
+                "PURPLE" -> DeviceProfile.Colors.PURPLE
+                "ORANGE" -> DeviceProfile.Colors.ORANGE
+                "TURQUOISE" -> DeviceProfile.Colors.TURQUOISE
+                "PURPLE_PINK", "PURPLEPINK" -> DeviceProfile.Colors.PURPLE_PINK
+                "ORANGE_YELLOW", "ORANGEYELLOW" -> DeviceProfile.Colors.ORANGE_YELLOW
+                "LIGHT_BLUE", "LIGHTBLUE" -> DeviceProfile.Colors.LIGHT_BLUE
+                "PINK" -> DeviceProfile.Colors.PINK
+                "YELLOW" -> DeviceProfile.Colors.YELLOW
+                "TEAL" -> DeviceProfile.Colors.TEAL
+                "MAGENTA" -> DeviceProfile.Colors.MAGENTA
+                else -> null
+            }
+        }
+
+        /**
+         * Parse effect name (case-insensitive).
+         * Returns hex code or null if not found.
+         */
+        private fun parseEffectName(name: String): Int? {
+            return when (name.lowercase()) {
+                "none" -> DeviceProfile.Commands.ON
+                "flash" -> DeviceProfile.Commands.FLASH
+                "strobe" -> DeviceProfile.Commands.STROBE
+                "fade" -> DeviceProfile.Commands.FADE
+                "smooth" -> DeviceProfile.Commands.SMOOTH
+                else -> null
             }
         }
     }
