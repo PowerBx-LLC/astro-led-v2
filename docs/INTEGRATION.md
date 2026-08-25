@@ -150,25 +150,21 @@ Case-insensitive; accepts both `LIGHT_BLUE` and `lightBlue`.
 
 ---
 
-## Execution Order (Critical)
+## Execution Order (Automatic)
 
-When multiple commands are sent in one transaction:
+The service automatically handles power/color ordering and sysfs write sequencing. Senders do not need to order intent extras or worry about the internal command sequence—simply include whichever fields you want to change:
 
-1. **Color** (FIRST — driver ignores color after power ON)
-2. **Effect**
-3. **Power**
-4. **Brightness**
-
-Example Intent:
 ```kotlin
 val intent = Intent("com.powerbx.astro.LED").apply {
-    putExtra("color", "RED")      // 1st
-    putExtra("effect", "flash")   // 2nd
-    putExtra("power", "on")       // 3rd (after color)
+    putExtra("color", "RED")
+    putExtra("effect", "flash")
+    putExtra("power", "on")
     setPackage("com.powerbx.astro.ledservice")
 }
 context.sendBroadcast(intent)
 ```
+
+Internally, the service writes: color → effect → power → brightness, with 200ms delays between writes to ensure hardware consistency.
 
 ---
 
@@ -190,7 +186,7 @@ context.sendBroadcast(intent)
 
 ```bash
 curl http://127.0.0.1:8188/health
-# {"ok":true,"profile":"RK3288_ASTRO"}
+# {"status":"ok","device":"RK3288_ASTRO","sysfsPath":"/sys/devices/platform/led_con_h/zigbee_reset","reachable":true}
 ```
 
 ### ADB Property
