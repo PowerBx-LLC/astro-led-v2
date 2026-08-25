@@ -28,12 +28,17 @@ class LedService : Service() {
 
     private var currentState: LedState = LedState()
     private val broadcastReceiver = LedCommandReceiver()
+    private lateinit var httpServer: LedHttpServer
 
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "Service onCreate")
         currentState = LedState.restore(this)
         createNotificationChannel()
+        httpServer = LedHttpServer(port = 8188) { power, color, effect, brightness ->
+            handleHttpCommand(power, color, effect, brightness)
+        }
+        httpServer.start()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -77,6 +82,7 @@ class LedService : Service() {
         } catch (e: Exception) {
             Log.w(TAG, "Failed to unregister receiver", e)
         }
+        httpServer.stop()
         super.onDestroy()
     }
 
@@ -111,6 +117,17 @@ class LedService : Service() {
         currentState = newState
         currentState.save(this)
         broadcastStateChange()
+    }
+
+    private fun handleHttpCommand(power: String?, color: String?, effect: String?, brightness: String?) {
+        // Process HTTP command through the same handler as broadcast receiver
+        val intent = Intent("com.powerbx.astro.LED").apply {
+            if (power != null) putExtra("power", power)
+            if (color != null) putExtra("color", color)
+            if (effect != null) putExtra("effect", effect)
+            if (brightness != null) putExtra("brightness", brightness)
+        }
+        broadcastReceiver.onReceive(this, intent)
     }
 
     private fun broadcastStateChange() {

@@ -12,7 +12,7 @@ import org.json.JSONObject
  */
 class LedHttpServer(
     private val port: Int = 8188,
-    private val onStateChange: (LedState) -> Unit
+    private val onStateChange: (String?, String?, String?, String?) -> Unit
 ) : NanoHTTPD("127.0.0.1", port) {
     private companion object {
         private const val TAG = "LedHttpServer"
@@ -76,6 +76,7 @@ class LedHttpServer(
             val json = JSONObject(body)
 
             val powerStr = json.optString("power", "")
+            val brightnessStr = json.optString("brightness", "")
             val newState = LedState(
                 power = when (powerStr.lowercase()) {
                     "on", "true" -> true
@@ -86,8 +87,14 @@ class LedHttpServer(
                 effect = json.optString("effect", currentState.effect)
             )
 
-            Log.d(TAG, "Applying state from HTTP: $newState")
-            onStateChange(newState)
+            Log.d(TAG, "Applying state from HTTP: $newState, brightness=$brightnessStr")
+            // Pass command fields to handler (power, color, effect, brightness as strings)
+            onStateChange(
+                powerStr.takeIf { it.isNotEmpty() },
+                json.optString("color", "").takeIf { it.isNotEmpty() },
+                json.optString("effect", "").takeIf { it.isNotEmpty() },
+                brightnessStr.takeIf { it.isNotEmpty() }
+            )
             currentState = newState
 
             val responseJson = JSONObject().put("success", true).put("state", newState.toJson())
