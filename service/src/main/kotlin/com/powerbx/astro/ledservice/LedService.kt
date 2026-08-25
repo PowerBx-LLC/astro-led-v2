@@ -209,7 +209,9 @@ class LedService : Service() {
         /**
          * Apply LED state via sequential sysfs writes.
          * Order: (1) color, (2) effect, (3) power, (4) brightness
-         * Each field writes its own hex code; skips if not provided.
+         * Critical: Only write power if state is changing (off→on or on→off).
+         * If LED is on and only color/effect changes, do NOT write ON after—
+         * the driver re-commits the old color and overrides the new one.
          * 200ms delay between writes is handled by SysfsWriter.
          */
         private fun applyLedState(
@@ -241,15 +243,21 @@ class LedService : Service() {
                 }
             }
 
-            // (3) Power: write ON (0x03) or OFF (0x02)
+            // (3) Power: only write if state is actually changing (off→on or on→off)
+            // Do NOT write power if only color/effect changed; it reverts the new color
             if (powerStr != null) {
-                val powerCode = if (powerStr.lowercase() == "on") {
-                    DeviceProfile.Commands.ON
+                val newPowerState = powerStr.lowercase() == "on"
+                if (newPowerState != currentState.power) {
+                    val powerCode = if (newPowerState) {
+                        DeviceProfile.Commands.ON
+                    } else {
+                        DeviceProfile.Commands.OFF
+                    }
+                    Log.d(TAG, "Writing power: 0x${String.format("%02X", powerCode)}")
+                    SysfsWriter.writeCommand(DeviceProfile.SYSFS_PATH, powerCode)
                 } else {
-                    DeviceProfile.Commands.OFF
+                    Log.d(TAG, "Power state unchanged ($newPowerState); skipping power write")
                 }
-                Log.d(TAG, "Writing power: 0x${String.format("%02X", powerCode)}")
-                SysfsWriter.writeCommand(DeviceProfile.SYSFS_PATH, powerCode)
             }
 
             // (4) Brightness: write UP (0x01) or DOWN (0x00)
