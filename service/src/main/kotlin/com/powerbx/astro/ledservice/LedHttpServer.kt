@@ -12,20 +12,15 @@ import org.json.JSONObject
  */
 class LedHttpServer(
     private val port: Int = 8188,
-    private val onStateChange: (String?, String?, String?, String?) -> Unit
+    private val onStateChange: (String?, String?, String?, String?) -> Unit,
+    private val getState: () -> LedState
 ) : NanoHTTPD("127.0.0.1", port) {
     private companion object {
         private const val TAG = "LedHttpServer"
     }
 
-    private var currentState: LedState = LedState()
-
     init {
         Log.d(TAG, "HTTP server initialized on 127.0.0.1:$port")
-    }
-
-    fun setState(state: LedState) {
-        currentState = state
     }
 
     override fun serve(session: IHTTPSession?): Response {
@@ -49,7 +44,8 @@ class LedHttpServer(
 
     private fun handleGetLed(): Response {
         return try {
-            val stateJson = currentState.toJson().toString()
+            val state = getState()
+            val stateJson = state.toJson().toString()
             newFixedLengthResponse(Response.Status.OK, "application/json", stateJson)
         } catch (e: Exception) {
             Log.e(TAG, "Error serializing state", e)
@@ -65,7 +61,11 @@ class LedHttpServer(
         return try {
             val files = HashMap<String, String>()
             session.parseBody(files)
-            val body = files["postData"] ?: ""
+            var body = files["postData"] ?: ""
+            // If no postData, try form-encoded: use first key from session.parms
+            if (body.isBlank() && session.parms.isNotEmpty()) {
+                body = session.parms.keys.firstOrNull() ?: ""
+            }
             if (body.isBlank()) {
                 return newFixedLengthResponse(
                     Response.Status.BAD_REQUEST,
@@ -95,9 +95,9 @@ class LedHttpServer(
                 json.optString("effect", "").takeIf { it.isNotEmpty() },
                 brightnessStr.takeIf { it.isNotEmpty() }
             )
-            currentState = newState
 
-            val responseJson = JSONObject().put("success", true).put("state", newState.toJson())
+            val currentState = getState()
+            val responseJson = JSONObject().put("success", true).put("state", currentState.toJson())
             newFixedLengthResponse(Response.Status.OK, "application/json", responseJson.toString())
         } catch (e: Exception) {
             Log.e(TAG, "Error processing POST", e)

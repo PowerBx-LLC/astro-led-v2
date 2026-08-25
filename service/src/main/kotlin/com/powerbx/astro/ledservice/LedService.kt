@@ -35,9 +35,13 @@ class LedService : Service() {
         Log.d(TAG, "Service onCreate")
         currentState = LedState.restore(this)
         createNotificationChannel()
-        httpServer = LedHttpServer(port = 8188) { power, color, effect, brightness ->
-            handleHttpCommand(power, color, effect, brightness)
-        }
+        httpServer = LedHttpServer(
+            port = 8188,
+            onStateChange = { power, color, effect, brightness ->
+                handleHttpCommand(power, color, effect, brightness)
+            },
+            getState = { currentState }
+        )
         httpServer.start()
     }
 
