@@ -9,59 +9,57 @@ object AstroLed {
     private const val HTTP_ENDPOINT = "http://127.0.0.1:8188/led"
     private const val HEALTH_ENDPOINT = "http://127.0.0.1:8188/health"
     private const val BROADCAST_ACTION = "com.powerbx.astro.LED"
+    private const val SERVICE_PACKAGE = "com.powerbx.astro.ledservice"
     private const val TIMEOUT_MS = 3000
-    
-    private var applicationContext: Context? = null
-    private var cachedState: LedState? = null
 
-    fun init(context: Context) {
-        applicationContext = context.applicationContext
-    }
-
-    fun isAvailable(): Result<Boolean> = try {
-        val available = checkHealthEndpoint()
-        Result.Success(available)
+    fun isAvailable(context: Context): Boolean = try {
+        checkHealthEndpoint()
     } catch (e: Exception) {
-        Result.Failure(e)
+        false
     }
 
-    fun on(): Result<Unit> = sendCommand("on", null, null)
+    fun on(context: Context): Result<Unit> = sendCommand(context, "on", null, null, null)
 
-    fun off(): Result<Unit> = sendCommand("off", null, null)
+    fun off(context: Context): Result<Unit> = sendCommand(context, "off", null, null, null)
 
-    fun setColor(color: Color): Result<Unit> = sendCommand("setColor", color, null)
+    fun setColor(context: Context, color: Color): Result<Unit> = 
+        sendCommand(context, null, color.name.lowercase(), null, null)
 
-    fun setEffect(effect: Effect): Result<Unit> = sendCommand("setEffect", null, effect)
+    fun setEffect(context: Context, effect: Effect): Result<Unit> = 
+        sendCommand(context, null, null, effect.name.lowercase(), null)
 
-    fun brightnessUp(): Result<Unit> = sendCommand("brightnessUp", null, null)
+    fun brightnessUp(context: Context): Result<Unit> = 
+        sendCommand(context, null, null, null, "up")
 
-    fun brightnessDown(): Result<Unit> = sendCommand("brightnessDown", null, null)
+    fun brightnessDown(context: Context): Result<Unit> = 
+        sendCommand(context, null, null, null, "down")
 
-    fun getState(): Result<LedState> = try {
+    fun getState(context: Context): Result<LedState> = try {
         val state = fetchState()
-        cachedState = state
         Result.Success(state)
     } catch (e: Exception) {
         Result.Failure(e)
     }
 
     private fun sendCommand(
-        command: String,
-        color: Color? = null,
-        effect: Effect? = null
+        context: Context,
+        power: String?,
+        color: String?,
+        effect: String?,
+        brightness: String?
     ): Result<Unit> {
         return try {
             val success = try {
-                sendHttpCommand(command, color, effect)
+                sendHttpCommand(power, color, effect, brightness)
             } catch (e: Exception) {
                 // Fallback to Intent broadcast
-                sendBroadcastCommand(command, color, effect)
+                sendBroadcastCommand(context, power, color, effect, brightness)
                 true
             }
             if (success) {
                 Result.Success(Unit)
             } else {
-                Result.Failure(Exception("Command execution failed: $command"))
+                Result.Failure(Exception("Command execution failed"))
             }
         } catch (e: Exception) {
             Result.Failure(e)
@@ -69,13 +67,14 @@ object AstroLed {
     }
 
     private fun sendHttpCommand(
-        command: String,
-        color: Color? = null,
-        effect: Effect? = null
+        power: String?,
+        color: String?,
+        effect: String?,
+        brightness: String?
     ): Boolean {
         val url = URL(HTTP_ENDPOINT)
         val connection = url.openConnection() as HttpURLConnection
-        
+
         return try {
             connection.apply {
                 requestMethod = "POST"
@@ -85,7 +84,7 @@ object AstroLed {
                 doOutput = true
             }
 
-            val payload = buildJsonPayload(command, color, effect)
+            val payload = buildJsonPayload(power, color, effect, brightness)
             connection.outputStream.write(payload.toByteArray())
             connection.outputStream.flush()
 
@@ -97,37 +96,42 @@ object AstroLed {
     }
 
     private fun sendBroadcastCommand(
-        command: String,
-        color: Color? = null,
-        effect: Effect? = null
+        context: Context,
+        power: String?,
+        color: String?,
+        effect: String?,
+        brightness: String?
     ): Boolean {
-        val context = applicationContext ?: return false
-        
         val intent = Intent(BROADCAST_ACTION).apply {
-            putExtra("command", command)
-            color?.let { putExtra("color", it.name) }
-            effect?.let { putExtra("effect", it.name) }
+            power?.let { putExtra("power", it) }
+            color?.let { putExtra("color", it) }
+            effect?.let { putExtra("effect", it) }
+            brightness?.let { putExtra("brightness", it) }
+            setPackage(SERVICE_PACKAGE)
         }
-        
+
         context.sendBroadcast(intent)
         return true
     }
 
     private fun buildJsonPayload(
-        command: String,
-        color: Color? = null,
-        effect: Effect? = null
+        power: String?,
+        color: String?,
+        effect: String?,
+        brightness: String?
     ): String {
-        val parts = mutableListOf("\"command\":\"$command\"")
-        color?.let { parts.add("\"color\":\"${it.name}\"") }
-        effect?.let { parts.add("\"effect\":\"${it.name}\"") }
+        val parts = mutableListOf<String>()
+        power?.let { parts.add("\"power\":\"$it\"") }
+        color?.let { parts.add("\"color\":\"$it\"") }
+        effect?.let { parts.add("\"effect\":\"$it\"") }
+        brightness?.let { parts.add("\"brightness\":\"$it\"") }
         return "{${parts.joinToString(",")}}"
     }
 
     private fun checkHealthEndpoint(): Boolean {
         val url = URL(HEALTH_ENDPOINT)
         val connection = url.openConnection() as HttpURLConnection
-        
+
         return try {
             connection.apply {
                 requestMethod = "GET"
@@ -144,9 +148,9 @@ object AstroLed {
     }
 
     private fun fetchState(): LedState {
-        val url = URL("$HTTP_ENDPOINT/state")
+        val url = URL(HTTP_ENDPOINT)
         val connection = url.openConnection() as HttpURLConnection
-        
+
         return try {
             connection.apply {
                 requestMethod = "GET"
@@ -173,19 +177,19 @@ object AstroLed {
             var color: Color? = null
             var effect: Effect? = null
 
-            // Simple JSON parsing (no dependency on external libraries)
-            if (json.contains("\"power\":\"ON\"")) {
+            // Simple JSON parsing (no external dependency)
+            if (json.contains("\"power\":\"ON\"", ignoreCase = true)) {
                 power = Power.ON
             }
 
             Color.values().forEach { c ->
-                if (json.contains("\"color\":\"${c.name}\"")) {
+                if (json.contains("\"color\":\"${c.name}\"", ignoreCase = true)) {
                     color = c
                 }
             }
 
             Effect.values().forEach { e ->
-                if (json.contains("\"effect\":\"${e.name}\"")) {
+                if (json.contains("\"effect\":\"${e.name}\"", ignoreCase = true)) {
                     effect = e
                 }
             }
