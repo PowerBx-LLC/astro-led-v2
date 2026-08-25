@@ -27,6 +27,6 @@ class LedBroadcastReceiver : BroadcastReceiver() {
             putExtras(intent)
         }
 
-        context.startService(serviceIntent)
+        androidx.core.content.ContextCompat.startForegroundService(context, serviceIntent)
     }
 }

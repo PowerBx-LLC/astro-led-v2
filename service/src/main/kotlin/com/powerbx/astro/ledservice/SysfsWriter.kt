@@ -46,7 +46,7 @@ object SysfsWriter {
         val echoCommand = "echo w 0x$hexValue > $devicePath"
 
         return try {
-            val process = Runtime.getRuntime().exec(arrayOf("su", "-c", echoCommand))
+            val process = Runtime.getRuntime().exec(arrayOf("su", "0", "sh", "-c", echoCommand))
             val exitCode = process.waitFor()
 
             if (exitCode == 0) {

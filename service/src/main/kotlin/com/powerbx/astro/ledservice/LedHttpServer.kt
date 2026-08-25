@@ -63,23 +63,27 @@ class LedHttpServer(
 
     private fun handlePostLed(session: IHTTPSession): Response {
         return try {
-            val contentLength = session.contentLength
-            if (contentLength <= 0) {
+            val files = HashMap<String, String>()
+            session.parseBody(files)
+            val body = files["postData"] ?: ""
+            if (body.isBlank()) {
                 return newFixedLengthResponse(
                     Response.Status.BAD_REQUEST,
                     "application/json",
                     JSONObject().put("error", "Empty body").toString()
                 )
             }
-
-            val body = session.inputStream.bufferedReader().use { it.readText() }
             val json = JSONObject(body)
 
+            val powerStr = json.optString("power", "")
             val newState = LedState(
-                power = json.optBoolean("power", currentState.power),
+                power = when (powerStr.lowercase()) {
+                    "on", "true" -> true
+                    "off", "false" -> false
+                    else -> currentState.power
+                },
                 color = json.optString("color", currentState.color),
-                effect = json.optString("effect", currentState.effect),
-                brightness = json.optInt("brightness", currentState.brightness)
+                effect = json.optString("effect", currentState.effect)
             )
 
             Log.d(TAG, "Applying state from HTTP: $newState")
@@ -104,7 +108,7 @@ class LedHttpServer(
                 put("status", "ok")
                 put("device", DeviceProfile.DEVICE_NAME)
                 put("sysfsPath", DeviceProfile.SYSFS_PATH)
-                put("reachable", SysfsWriter.isDeviceReachable(DeviceProfile.SYSFS_PATH))
+                put("reachable", java.io.File(DeviceProfile.SYSFS_PATH).exists())
             }
             newFixedLengthResponse(Response.Status.OK, "application/json", healthJson.toString())
         } catch (e: Exception) {
