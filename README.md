@@ -4,14 +4,7 @@ Service-based LED control system for ASTRO perimeter devices (RK3288; RK3566 pla
 
 ## Status
 
-✅ **Verified on RK3288 hardware:**
-- Service via Intent broadcast (on/color via setPackage)
-- Write order: color → effect → power → brightness (critical: color before power)
-- 200ms delay between sysfs writes
-- HTTP endpoint working on 127.0.0.1:8188
-- setPackage("com.powerbx.astro.ledservice") required on Android 8+
-- First broadcast after sideload needs --include-stopped-packages flag
-- After reboot, service auto-starts and flag not needed
+✅ **Verified on RK3288: on/off, 16 colors, effects via Intent**
 
 ## Overview
 
