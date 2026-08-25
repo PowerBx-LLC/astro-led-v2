@@ -7,9 +7,11 @@ import java.util.concurrent.Executors
 /**
  * Single-threaded sysfs writer for LED control.
  * Handles root escalation and error handling.
+ * Inserts 200ms delay between consecutive writes.
  */
 object SysfsWriter {
     private const val TAG = "SysfsWriter"
+    private const val WRITE_DELAY_MS = 200L
     private val executor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable).apply { name = "SysfsWriter" }
     }
@@ -29,7 +31,9 @@ object SysfsWriter {
 
     /**
      * Write a command to sysfs via root.
-     * Format: su -c "echo w 0x{hex} > /sys/..."
+     * Uses DeviceProfile.SU_COMMAND: arrayOf("su", "0", "sh", "-c")
+     * Format: echo w 0x{hex} > /sys/...
+     * Inserts 200ms delay after write to allow driver processing.
      */
     fun writeCommand(devicePath: String, command: Int): Result<Unit> {
         if (command < 0x00 || command > 0xFF) {
@@ -46,11 +50,14 @@ object SysfsWriter {
         val echoCommand = "echo w 0x$hexValue > $devicePath"
 
         return try {
-            val process = Runtime.getRuntime().exec(arrayOf("su", "-c", echoCommand))
+            val cmdArray = DeviceProfile.SU_COMMAND + echoCommand
+            val process = Runtime.getRuntime().exec(cmdArray)
             val exitCode = process.waitFor()
 
             if (exitCode == 0) {
                 Log.d(TAG, "Command 0x$hexValue written successfully to $devicePath")
+                // Insert 200ms delay to allow driver processing
+                Thread.sleep(WRITE_DELAY_MS)
                 Result.Success(Unit)
             } else {
                 Log.e(TAG, "Write failed with exit code $exitCode")

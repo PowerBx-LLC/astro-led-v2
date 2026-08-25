@@ -16,7 +16,8 @@ import androidx.core.content.ContextCompat
 
 /**
  * Foreground service managing LED state and handling broadcast commands.
- * Writes commands to sysfs in sequential order: power, color, effect, brightness.
+ * Writes commands to sysfs in order: color → effect → power → brightness.
+ * (Color must come before power to avoid driver ignoring color after ON.)
  */
 class LedService : Service() {
     private companion object {
@@ -58,6 +59,12 @@ class LedService : Service() {
             )
         } else {
             registerReceiver(broadcastReceiver, intentFilter)
+        }
+
+        // Handle cold-start intent if action is com.powerbx.astro.LED
+        if (intent != null && intent.action == "com.powerbx.astro.LED") {
+            Log.d(TAG, "Processing cold-start intent")
+            broadcastReceiver.onReceive(this, intent)
         }
 
         return START_STICKY
@@ -108,7 +115,7 @@ class LedService : Service() {
 
     private fun broadcastStateChange() {
         val intent = Intent("com.powerbx.astro.LED_STATE").apply {
-            putExtra("power", currentState.power)
+            putExtra("power", if (currentState.power) "ON" else "OFF")
             putExtra("color", currentState.color)
             putExtra("effect", currentState.effect)
             if (currentState.lastError != null) {
@@ -126,7 +133,8 @@ class LedService : Service() {
      *   effect: "flash", "strobe", "fade", "smooth", "none"
      *   brightness: "up", "down"
      *
-     * Execution order: (1) power, (2) color, (3) effect, (4) brightness
+     * Execution order: (1) color, (2) effect, (3) power, (4) brightness
+     * (Color before power: driver ignores color writes that follow ON)
      */
     inner class LedCommandReceiver : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -179,8 +187,9 @@ class LedService : Service() {
 
         /**
          * Apply LED state via sequential sysfs writes.
-         * Order: (1) power, (2) color, (3) effect, (4) brightness
+         * Order: (1) color, (2) effect, (3) power, (4) brightness
          * Each field writes its own hex code; skips if not provided.
+         * 200ms delay between writes is handled by SysfsWriter.
          */
         private fun applyLedState(
             state: LedState,
@@ -189,18 +198,7 @@ class LedService : Service() {
             effectStr: String?,
             brightnessStr: String?
         ) {
-            // (1) Power: write ON (0x03) or OFF (0x02)
-            if (powerStr != null) {
-                val powerCode = if (powerStr.lowercase() == "on") {
-                    DeviceProfile.Commands.ON
-                } else {
-                    DeviceProfile.Commands.OFF
-                }
-                Log.d(TAG, "Writing power: 0x${String.format("%02X", powerCode)}")
-                SysfsWriter.writeCommand(DeviceProfile.SYSFS_PATH, powerCode)
-            }
-
-            // (2) Color: write matching color code
+            // (1) Color: write matching color code FIRST (before power)
             if (colorStr != null) {
                 val colorCode = parseColorName(colorStr)
                 if (colorCode != null) {
@@ -211,7 +209,7 @@ class LedService : Service() {
                 }
             }
 
-            // (3) Effect: write effect code or ON for "none"
+            // (2) Effect: write effect code or ON for "none"
             if (effectStr != null) {
                 val effectCode = parseEffectName(effectStr)
                 if (effectCode != null) {
@@ -220,6 +218,17 @@ class LedService : Service() {
                 } else {
                     Log.w(TAG, "Unknown effect: $effectStr")
                 }
+            }
+
+            // (3) Power: write ON (0x03) or OFF (0x02)
+            if (powerStr != null) {
+                val powerCode = if (powerStr.lowercase() == "on") {
+                    DeviceProfile.Commands.ON
+                } else {
+                    DeviceProfile.Commands.OFF
+                }
+                Log.d(TAG, "Writing power: 0x${String.format("%02X", powerCode)}")
+                SysfsWriter.writeCommand(DeviceProfile.SYSFS_PATH, powerCode)
             }
 
             // (4) Brightness: write UP (0x01) or DOWN (0x00)

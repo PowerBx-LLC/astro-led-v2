@@ -8,6 +8,7 @@ object DeviceProfile {
     const val DEVICE_NAME = "RK3288_ASTRO"
     const val SYSFS_PATH = "/sys/devices/platform/led_con_h/zigbee_reset"
     const val REQUIRES_ROOT = true
+    val SU_COMMAND = arrayOf("su", "0", "sh", "-c")
 
     /**
      * Command codes (sysfs write format: "echo w 0x{hex} > {SYSFS_PATH}")
@@ -48,6 +49,7 @@ object DeviceProfile {
     /**
      * RK3566_ASTRO profile (pending factory response)
      * TODO: Add sysfs path, command codes, and color codes when available
+     * TODO: Add SU_COMMAND for RK3566
      */
     object RK3566Stub {
         const val STATUS = "PENDING_FACTORY_RESPONSE"
